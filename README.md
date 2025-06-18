@@ -1,80 +1,30 @@
-# namer
+# DNS-Watchdog
+Eine Anwendung zur Erstellung von automatisierten DNS-Einträgen auf der Basis von DHCP leases von OPNsense.
+Damit soll eine einfachere Designierung der IP-Adressen ermöglicht werden.
 
-This project uses Quarkus, the Supersonic Subatomic Java Framework.
+## Konfiguration
 
-If you want to learn more about Quarkus, please visit its website: <https://quarkus.io/>.
+```yaml
+# Beispielkonfigurationsdatei für die Anwendung
 
-## Running the application in dev mode
+app:
+  opnsense:
+    api-key: "<API-SCHLÜSSEL>"          # Der API-Schlüssel für die Verbindung zu OPNsense. Bitte durch den echten Schlüssel ersetzen.
+    secret-key: "<GEHEIMSCHLÜSSEL>"      # Der geheime Schlüssel für die Authentifizierung bei OPNsense. Bitte nicht öffentlich zugänglich machen.
+    host: "https://<opnsense-host>/"    # Die URL der OPNsense-Instanz.
 
-You can run your application in dev mode that enables live coding using:
+  powerdns:
+    host: "http://<dns-host>:<port>/"   # Der Host und Port der PowerDNS-Verbindung.
+    api-key: "<POWERDNS-API-SCHLÜSSEL>" # Der API-Schlüssel für die Authentifizierung bei PowerDNS.
+    server-id: "<SERVER-ID>"            # Die Server-ID der PowerDNS-Instanz.
 
-```shell script
-./gradlew quarkusDev
+  dns:
+    interfaces:                         # Liste der Netzwerkereignisse und deren DNS-Konfigurationszuordnungen.
+      - iface: <schnittstelle1>         # Netzwerkinterface (z.B. 'opt3').
+        zone: "<zone1>"                 # DNS-Zone, die zugeordnet wird (z.B. 'infra.home.rwu.de').
+        prefix: "<präfix1>"             # DNS-Präfix für die Zone (z.B. 'dmz.vl-30').
+
+      - iface: <schnittstelle2>         # Ein weiteres Netzwerkinterface, Zone und Präfix.
+        zone: "<zone2>"
+        prefix: "<präfix2>"
 ```
-
-> **_NOTE:_**  Quarkus now ships with a Dev UI, which is available in dev mode only at <http://localhost:8080/q/dev/>.
-
-## Packaging and running the application
-
-The application can be packaged using:
-
-```shell script
-./gradlew build
-```
-
-It produces the `quarkus-run.jar` file in the `build/quarkus-app/` directory.
-Be aware that it’s not an _über-jar_ as the dependencies are copied into the `build/quarkus-app/lib/` directory.
-
-The application is now runnable using `java -jar build/quarkus-app/quarkus-run.jar`.
-
-If you want to build an _über-jar_, execute the following command:
-
-```shell script
-./gradlew build -Dquarkus.package.jar.type=uber-jar
-```
-
-The application, packaged as an _über-jar_, is now runnable using `java -jar build/*-runner.jar`.
-
-## Creating a native executable
-
-You can create a native executable using:
-
-```shell script
-./gradlew build -Dquarkus.native.enabled=true
-```
-
-Or, if you don't have GraalVM installed, you can run the native executable build in a container using:
-
-```shell script
-./gradlew build -Dquarkus.native.enabled=true -Dquarkus.native.container-build=true
-```
-
-You can then execute your native executable with: `./build/namer-1.0-SNAPSHOT-runner`
-
-If you want to learn more about building native executables, please consult <https://quarkus.io/guides/gradle-tooling>.
-
-## Related Guides
-
-- REST ([guide](https://quarkus.io/guides/rest)): A Jakarta REST implementation utilizing build time processing and
-  Vert.x. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on
-  it.
-- REST Jackson ([guide](https://quarkus.io/guides/rest#json-serialisation)): Jackson serialization support for Quarkus
-  REST. This extension is not compatible with the quarkus-resteasy extension, or any of the extensions that depend on it
-- YAML Configuration ([guide](https://quarkus.io/guides/config-yaml)): Use YAML to configure your Quarkus application
-- Redis Client ([guide](https://quarkus.io/guides/redis)): Connect to Redis in either imperative or reactive style
-
-## Provided Code
-
-### YAML Config
-
-Configure your application with YAML
-
-[Related guide section...](https://quarkus.io/guides/config-reference#configuration-examples)
-
-The Quarkus application configuration is located in `src/main/resources/application.yml`.
-
-### REST
-
-Easily start your REST Web Services
-
-[Related guide section...](https://quarkus.io/guides/getting-started-reactive#reactive-jax-rs-resources)
