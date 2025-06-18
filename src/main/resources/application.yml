@@ -1,0 +1,15 @@
+quarkus:
+  rest-client:
+    logging:
+      scope: request-response
+    opnsense-leases:
+      tls-configuration-name: tls-disabled
+      url: ${app.opnsense.host}
+    powerdns:
+      url: ${app.powerdns.host}
+  tls:
+    tls-disabled:
+      trust-all: true
+      hostname-verification-algorithm: NONE
+app:
+  schedule: "30s"
