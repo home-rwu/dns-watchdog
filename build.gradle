@@ -15,7 +15,6 @@ dependencies {
     implementation 'io.quarkus:quarkus-rest'
     implementation 'io.quarkus:quarkus-rest-jackson'
     implementation 'io.quarkus:quarkus-config-yaml'
-    implementation 'io.quarkus:quarkus-redis-client'
     implementation 'io.quarkus:quarkus-arc'
 
     implementation 'org.mapstruct:mapstruct:1.6.2'

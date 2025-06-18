@@ -1,4 +1,4 @@
-package de.merkeg.openhome.monitor;
+package de.merkeg.openhome.watchdog;
 
 import de.merkeg.openhome.powerdns.api.RRSet;
 import lombok.AllArgsConstructor;

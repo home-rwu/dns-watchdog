@@ -1,4 +1,4 @@
-package de.merkeg.openhome.monitor;
+package de.merkeg.openhome.watchdog;
 
 import de.merkeg.openhome.config.AppConfig;
 import de.merkeg.openhome.config.DNSConfig;
@@ -21,7 +21,7 @@ import java.util.stream.Collectors;
 
 @Slf4j
 @ApplicationScoped
-public class MonitorService {
+public class WatchdogService {
 
   @RestClient
   OPNSenseLeasesService opnsenseLeasesService;
@@ -98,6 +98,7 @@ public class MonitorService {
       }
 
       log.info("Executing dns changes for zone '{}' - Total changes: {}", zone, mappings.size());
+      mappings.forEach(m -> log.debug("{} '{}' -> {} [{}]", m.getType(), m.getName(), m.getRecords().iterator().next().getContent(), m.getComments().iterator().next().getContent()));
       powerDNSZoneService.patchZone(serverId, zone, ZonePatchRequest.builder().rrsets(mappings).build());
     }
   }

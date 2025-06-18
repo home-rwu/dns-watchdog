@@ -1,6 +1,5 @@
-package de.merkeg.openhome.monitor;
+package de.merkeg.openhome.watchdog;
 
-import de.merkeg.openhome.config.DNSConfig;
 import de.merkeg.openhome.opnsense.DHCPLeases;
 import de.merkeg.openhome.powerdns.api.*;
 import de.merkeg.openhome.powerdns.api.Record;
@@ -9,7 +8,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.util.List;
 import java.util.Set;
 
 @Data
