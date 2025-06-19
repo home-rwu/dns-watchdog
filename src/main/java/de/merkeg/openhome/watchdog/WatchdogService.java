@@ -1,23 +1,21 @@
 package de.merkeg.openhome.watchdog;
 
 import de.merkeg.openhome.config.AppConfig;
-import de.merkeg.openhome.config.DNSConfig;
+import de.merkeg.openhome.dns.DnsEntry;
+import de.merkeg.openhome.iface.Interface;
 import de.merkeg.openhome.opnsense.DHCPLeases;
 import de.merkeg.openhome.opnsense.OPNSenseLeasesService;
+import de.merkeg.openhome.powerdns.PowerDNSService;
 import de.merkeg.openhome.powerdns.api.PowerDNSZoneService;
-import de.merkeg.openhome.powerdns.api.RRSet;
-import de.merkeg.openhome.powerdns.api.Zone;
-import de.merkeg.openhome.powerdns.api.ZonePatchRequest;
 import io.quarkus.scheduler.Scheduled;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 import java.util.HashSet;
-import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 
 @Slf4j
 @ApplicationScoped
@@ -26,127 +24,66 @@ public class WatchdogService {
   @RestClient
   OPNSenseLeasesService opnsenseLeasesService;
 
-  @RestClient
-  PowerDNSZoneService powerDNSZoneService;
+  @Inject
+  PowerDNSService powerDNSService;
 
   @Inject
   AppConfig appConfig;
 
   @Scheduled(every = "${app.schedule}")
+  @Transactional
   public void cronJob(){
     log.debug("Searching for dns changes");
-    ChangeMap changeMap = this.createChangemap();
-    this.executeDnsChanges(changeMap);
+
+    Set<DHCPLeases.Lease> dhcpState = getCurrentDHCPState();
+    Set<DHCPLeases.Lease> requiredChanges = getRequiredChanges(dhcpState);
+
+    for(DHCPLeases.Lease lease : requiredChanges) {
+      DnsEntry dnsEntry = DnsEntry.findById(lease.getMac());
+      if(dnsEntry == null) { // For new entries
+        DnsEntry newEntry = DnsEntry.fromLease(lease);
+        powerDNSService.createOrUpdateDnsEntry(newEntry);
+        newEntry.persist();
+        continue;
+      }
+
+      if(dnsEntry.equalsEntry(lease)) continue; // Continue if nothing changed
+
+      dnsEntry.setAddress(lease.getAddress());
+      dnsEntry.setHostname(lease.getHostname());
+      dnsEntry.setIface(Interface.findById(lease.getInterfaceName()));
+      powerDNSService.createOrUpdateDnsEntry(dnsEntry);
+    }
+
+    DnsEntry.listAll().stream().filter(entry -> {
+      return !requiredChanges.stream().map(DHCPLeases.Lease::getMac).toList().contains(((DnsEntry)entry).getMac());
+    }).forEach(entry -> {
+      powerDNSService.deleteDnsEntry((DnsEntry)entry);
+      entry.delete();
+    });
+
     log.debug("Finished searching for dns changes");
   }
 
-  public ChangeMap createChangemap() {
-    ChangeMap changeMap = new ChangeMap();
 
+
+  private Set<DHCPLeases.Lease> getCurrentDHCPState() {
     DHCPLeases leases = opnsenseLeasesService.getLeases();
-    for(DHCPLeases.Lease lease : leases.getRows()) {
-      changeMap.getCurrentDhcp().add(Entry.fromLease(lease));
-    }
 
-    String serverId = appConfig.powerdns().serverId();
-    for(Zone z : powerDNSZoneService.getZones(serverId)) {
-      for(RRSet rrSet : powerDNSZoneService.getZone(serverId, z.getId()).getRrsets()) {
-        Entry entry = Entry.fromRRSet(rrSet);
-        if(entry != null) {
-          changeMap.getCurrentDns().add(entry);
-        }
-      }
-    }
-    List<String> enabledInterfaces = getEnabledInterfaces();
+    return new HashSet<>(leases.getRows());
+  }
 
-    for(Entry entry : changeMap.getCurrentDhcp()) {
-      if(!enabledInterfaces.contains(entry.getIface())) {
+  private Set<DHCPLeases.Lease> getRequiredChanges(Set<DHCPLeases.Lease> currentDhcp) {
+    Set<DHCPLeases.Lease> entries = new HashSet<>();
+
+    Set<String> enabledInterfaces = Interface.getEnabledInterfaces();
+    for(DHCPLeases.Lease lease : currentDhcp) {
+      if(!enabledInterfaces.contains(lease.getInterfaceName())) {
         continue;
       }
-      changeMap.getRequiredDhcp().add(entry);
+      entries.add(lease);
     }
 
-    compareChanges(changeMap);
-
-    for(String zone : getUsedZones()) {
-      Set<RRSet> mappings = new HashSet<>();
-
-      changeMap.getUpdate().stream().filter(e -> getInterfaceConfig(e.getIface()).zone().equals(zone)).forEach(e -> {
-        DNSConfig.DnsInterface interfaceConfig = getInterfaceConfig(e.getIface());
-        mappings.add(e.toRRSet(interfaceConfig.prefix(), interfaceConfig.zone()));
-      });
-
-      changeMap.getDeletion().stream().filter(e -> getInterfaceConfig(e.getIface()).zone().equals(zone)).forEach(e -> {
-        DNSConfig.DnsInterface interfaceConfig = getInterfaceConfig(e.getIface());
-        mappings.add(e.toDeletionRRSet(interfaceConfig.prefix(), interfaceConfig.zone()));
-      });
-
-      changeMap.mappings.put(zone, mappings);
-    }
-
-    return changeMap;
+    return entries;
   }
-
-  public void executeDnsChanges(ChangeMap changeMap) {
-    String serverId = appConfig.powerdns().serverId();
-
-    for(String zone : changeMap.mappings.keySet()) {
-      Set<RRSet> mappings = changeMap.mappings.get(zone);
-
-      if(mappings.isEmpty()){
-        continue;
-      }
-
-      log.info("Executing dns changes for zone '{}' - Total changes: {}", zone, mappings.size());
-      mappings.forEach(m -> log.debug("{} '{}' -> {} [{}]", m.getType(), m.getName(), m.getRecords().iterator().next().getContent(), m.getComments().iterator().next().getContent()));
-      powerDNSZoneService.patchZone(serverId, zone, ZonePatchRequest.builder().rrsets(mappings).build());
-    }
-  }
-
-  private void compareChanges(ChangeMap changeMap) {
-
-    // Deletion
-    for(Entry entry : changeMap.getCurrentDns()) {
-      Entry found = changeMap.requiredDhcp.stream()
-              .filter(req -> req.getHostname().equals(entry.getHostname()) && req.getIface().equals(entry.getIface())).findFirst()
-              .orElse(null);
-
-      if(found != null) {
-        continue;
-      }
-      changeMap.getDeletion().add(entry);
-    }
-
-    // Creation or edit
-    for(Entry entry : changeMap.getRequiredDhcp()) {
-      Entry found = changeMap.getCurrentDns().stream()
-              .filter(req -> req.getHostname().equals(entry.getHostname()) && req.getIface().equals(entry.getIface())).findFirst()
-              .orElse(null);
-
-      if(found == null) {
-        changeMap.getUpdate().add(entry);
-        continue;
-      }
-
-      if(found.equals(entry)) {
-        continue;
-      }
-
-      changeMap.getUpdate().add(entry);
-    }
-  }
-
-
-  public List<String> getEnabledInterfaces() {
-    return appConfig.dns().interfaces().stream().map(DNSConfig.DnsInterface::iface).toList();
-  }
-
-  public Set<String> getUsedZones() {
-    return appConfig.dns().interfaces().stream().map(DNSConfig.DnsInterface::zone).collect(Collectors.toSet());
-  }
-
-  public DNSConfig.DnsInterface getInterfaceConfig(String iface) {
-    return appConfig.dns().interfaces().stream().filter(i -> i.iface().equals(iface)).findFirst().orElse(null);
-  }
-
 }

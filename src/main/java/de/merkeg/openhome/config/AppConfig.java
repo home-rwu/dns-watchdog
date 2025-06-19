@@ -8,4 +8,5 @@ public interface AppConfig {
   PowerDNSConfig powerdns();
   DNSConfig dns();
   String schedule();
+  TelegramConfig telegram();
 }
