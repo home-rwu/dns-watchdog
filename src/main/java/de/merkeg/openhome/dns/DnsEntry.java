@@ -30,7 +30,7 @@ public class DnsEntry extends PanacheEntityBase {
   @ManyToOne
   Interface iface;
 
-  @OneToMany(mappedBy = "dns")
+  @OneToMany(mappedBy = "dns", orphanRemoval = true, cascade = CascadeType.REMOVE)
   Set<CNameEntry> cnames;
 
 
