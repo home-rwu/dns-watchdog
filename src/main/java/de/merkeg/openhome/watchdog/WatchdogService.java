@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 @Slf4j
@@ -69,8 +70,8 @@ public class WatchdogService {
 
   private Set<DHCPLeases.Lease> getCurrentDHCPState() {
     DHCPLeases leases = opnsenseLeasesService.getLeases();
-
-    return new HashSet<>(leases.getRows());
+    List<DHCPLeases.Lease> filteredLeases = leases.getRows().stream().filter(l -> l.getStatus().equalsIgnoreCase("online")).toList();
+    return new HashSet<>(filteredLeases);
   }
 
   private Set<DHCPLeases.Lease> getRequiredChanges(Set<DHCPLeases.Lease> currentDhcp) {
