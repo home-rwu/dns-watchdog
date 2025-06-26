@@ -14,6 +14,9 @@ import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.rest.client.inject.RestClient;
 
+import java.time.LocalDateTime;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -59,8 +62,15 @@ public class WatchdogService {
     DnsEntry.listAll().stream().filter(entry -> {
       return !requiredChanges.stream().map(DHCPLeases.Lease::getMac).toList().contains(((DnsEntry)entry).getMac());
     }).forEach(entry -> {
-      powerDNSService.deleteDnsEntry((DnsEntry)entry);
-      entry.delete();
+      if(((DnsEntry) entry).getLastSeen().plus(10, ChronoUnit.MINUTES).isBefore(LocalDateTime.now())) {
+        log.info("Deleting Host entry {} - {} ({}) as their lease isn't there for longer than 10 minutes", ((DnsEntry) entry).getFqdn(), ((DnsEntry) entry).getAddress(), ((DnsEntry) entry).getMac());
+        powerDNSService.deleteDnsEntry((DnsEntry)entry);
+        entry.delete();
+        return;
+      }
+      log.info("Host lease is expired {} - {} ({}) waiting a few minutes more before deleting", ((DnsEntry) entry).getFqdn(), ((DnsEntry) entry).getAddress(), ((DnsEntry) entry).getMac());
+
+
     });
 
     log.debug("Finished searching for dns changes");
@@ -70,8 +80,7 @@ public class WatchdogService {
 
   private Set<DHCPLeases.Lease> getCurrentDHCPState() {
     DHCPLeases leases = opnsenseLeasesService.getLeases();
-    List<DHCPLeases.Lease> filteredLeases = leases.getRows().stream().filter(l -> l.getStatus().equalsIgnoreCase("online")).toList();
-    return new HashSet<>(filteredLeases);
+    return new HashSet<>(leases.getRows());
   }
 
   private Set<DHCPLeases.Lease> getRequiredChanges(Set<DHCPLeases.Lease> currentDhcp) {
@@ -79,9 +88,17 @@ public class WatchdogService {
 
     Set<String> enabledInterfaces = Interface.getEnabledInterfaces();
     for(DHCPLeases.Lease lease : currentDhcp) {
+
       if(!enabledInterfaces.contains(lease.getInterfaceName())) {
+        log.trace("Excluding Host {} - {} ({}) as their interface is not included: {}", lease.getHostname(), lease.getAddress(), lease.getMac(), lease.getInterfaceName());
         continue;
       }
+
+      DnsEntry dnsEntry = DnsEntry.findById(lease.getMac());
+      if(dnsEntry != null) {
+        dnsEntry.setLastSeen(LocalDateTime.now());
+      }
+
       entries.add(lease);
     }
 

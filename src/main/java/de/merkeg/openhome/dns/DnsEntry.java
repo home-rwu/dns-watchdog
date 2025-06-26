@@ -11,6 +11,7 @@ import io.quarkus.hibernate.orm.panache.PanacheEntityBase;
 import jakarta.persistence.*;
 import lombok.*;
 
+import java.time.LocalDateTime;
 import java.util.Set;
 
 @Entity(name = "dns")
@@ -33,6 +34,8 @@ public class DnsEntry extends PanacheEntityBase {
   @OneToMany(mappedBy = "dns", orphanRemoval = true, cascade = CascadeType.REMOVE)
   Set<CNameEntry> cnames;
 
+  LocalDateTime lastSeen;
+
 
   public String getFqdn() {
     return String.join(".", new String[]{!hostname.isBlank() ? hostname : mac.replaceAll(":", "-"), iface.getPrefix(), iface.getZone()}) + ".";
@@ -41,6 +44,7 @@ public class DnsEntry extends PanacheEntityBase {
   public static DnsEntry fromLease(DHCPLeases.Lease lease) {
     return DnsEntry.builder()
             .mac(lease.getMac())
+            .lastSeen(LocalDateTime.now())
             .hostname(lease.getHostname())
             .address(lease.getAddress())
             .iface(Interface.findById(lease.getInterfaceName()))
